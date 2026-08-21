@@ -275,6 +275,17 @@ def main() -> None:
         ],
         "aggregate tok/s · no P2P (GNS), so TP=2 allreduce is host-staged at 5.85 GB/s",
     )
+    muse = DUAL["muse_glimmer_pp2"]
+    svg_grouped(
+        OUT / "dual-card-muse.svg",
+        "Muse Glimmer 30B: one card vs PP=2 across two",
+        ["2 agents", "4 agents", "16 agents", "32 agents"],
+        [
+            ("One card", [113.22, 225.88, 789.78, 0]),
+            ("PP=2 (both cards)", [muse["agg_2_tok_s"], muse["agg_4_tok_s"], muse["agg_16_tok_s"], muse["agg_32_tok_s"]]),
+        ],
+        "aggregate tok/s · one card wins until ~16 agents; the second card pays off at 32",
+    )
     svg_bar(
         OUT / "dual-card-prefill.svg",
         "48K-token prefill: pipeline parallel wins outright",

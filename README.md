@@ -16,7 +16,7 @@ Public 4-bit checkpoints. Decode is median tok/s, thinking-on unless a gate requ
 |---|---|---|---|---|---|---|
 | 1 | **Qwen3.6 35B-A3B** AWQ (~3B active) | 22.9 GiB | **134.8** | **1 261** | **3.16M / 24.1× @ 128K** | Hybrid GDN+MoE. MTP-3 is *slower* single-stream (125.6), 16-agent 1 357 |
 | 2 | Qwen3.8 **27B** W4A16 MTP-3 | 18.6 GiB | **88.3** | **641** | 1.01M / 7.73× @ 128K | Best 27B depth. No-MTP: 57.5 tok/s, 1.20M KV |
-| 3 | **Muse Glimmer 30B** W4A16 | 21.0 GiB | 58.1 | **790** | 2.64M / 20.1× @ 128K | Best aggregate in the lab. Needs a dev-branch vLLM |
+| 3 | **Muse Glimmer 30B** W4A16 | 21.0 GiB | 58.1 | **790** | 2.64M / 20.1× @ 128K | Best single-card aggregate; **1 103** on two cards at PP=2. Needs a dev-branch vLLM |
 | 4 | **Gemma 4 31B** QAT W4A16 | 19.8 GiB | 48.8 | 645 | 0.36M / 2.71× @ 128K | Official QAT checkpoint. Chat endpoint only |
 | 5 | Qwen2.5 **72B** AWQ | 38.8 GiB | **25.8** | 100 @ 4-wide | 0.12M / 3.78× @ **32K** | vLLM refused 128K. Already ~250 W on one stream |
 Same 27B recipe on **2× RTX PRO 2000 16 GB**, TP=2, no NVLink: 31 tok/s (off) / 55 tok/s (MTP-3). That box cannot load 72B AWQ.
@@ -83,7 +83,7 @@ What actually had to change:
 | Prefill ~48–53K | 33.6 s | 60.9 s |
 | Power 1 / 16 agents | 222 W / 249 W | 235 W / 250 W |
 
-**790 tok/s aggregate is the highest number in this lab** — higher than the 35B MoE at 16 agents on raw decode, though the MoE still wins on single-stream latency and KV depth.
+**790 tok/s aggregate is the highest single-card number in this lab** — higher than the 35B MoE at 16 agents on raw decode, though the MoE still wins on single-stream latency and KV depth. Given a second card it goes further still: [1 103 tok/s at PP=2](#muse-on-two-cards-the-fastest-endpoint-in-the-lab).
 
 Gemma caveat: query it through **`/v1/chat/completions`**. Raw `/v1/completions` on this instruction/thinking checkpoint degenerates into repeated tokens. Its 128K window is nominal — with bf16 KV the pool only holds ~2.7 full contexts.
 
@@ -131,6 +131,24 @@ Every layer's allreduce then crawls over the host bridge. Allreduce payload scal
 The one thing it gives up is TP=2's single-stream gain: 57.5 tok/s, identical to one card. Pipeline parallel does not split per-token weight reads, so a lone request sees no extra bandwidth.
 
 **Practical ranking on a P2P-less box:** sharding for raw throughput → **PP=2** when you want depth without losing speed → TP=2 only for single-stream latency or a model that will not fit.
+
+### Muse on two cards: the fastest endpoint in the lab
+
+Pairing the best model with the best dual-card mode. Muse Glimmer 30B at PP=2, bf16 KV, dev-branch vLLM:
+
+| | one card | PP=2 (both) |
+|---|---|---|
+| 16 agents | **790 tok/s** | 626 |
+| 32 agents | — | **1 103 tok/s** |
+| KV pool @128K | 2.64M / 20.1× | **5.25M / 40.1×** |
+| TTFT | 77.7 ms | **26.0 ms** |
+| 53K prefill | 33.6 s | **18.1 s** |
+
+**1 103 tok/s at 32 agents is the highest single-endpoint throughput measured here**, and the 5.25M-token KV pool is the deepest — 40 full 128K contexts resident at once, even though cc 8.0 forces bf16 KV on this checkpoint. Latency improves too: TTFT drops to **26 ms** from 77.7 ms, and a 53K prefill runs **1.9× faster** (18.1 s vs 33.6 s), the same pipeline-overlap effect seen on Qwen.
+
+![Muse: one card vs PP=2](figures/dual-card-muse.svg)
+
+But note the row that does not flatter the second card: **at 16 agents one card is faster** (790 vs 626). The second card only pays off past ~16 concurrent agents, or when you want the deeper pool. Power confirms PP=2 keeps both cards genuinely working — 422 W at 32 agents, rising with load, the opposite of the 72B TP=2 run where heavy batch drove power *down* because the cards sat blocked on the interconnect.
 
 ### Does the second card earn its keep on a 72B?
 

@@ -102,6 +102,26 @@ VLLM_USE_PRECOMPILED=1 /path/to/muse-venv/bin/pip install \
   "vllm @ git+https://github.com/vllm-project/vllm.git@main"
 ```
 
+**If that 404s**, `main` has moved ahead of the last published wheel — `VLLM_USE_PRECOMPILED` needs a commit that has one, or it tries to compile CUDA from source. Find the newest commit that does, and install from a full clone so the checkout can resolve it:
+
+```bash
+git clone --filter=blob:none https://github.com/vllm-project/vllm.git /tmp/vllmsrc
+cd /tmp/vllmsrc
+for c in $(git log -40 --format=%H); do
+  curl -sfI "https://wheels.vllm.ai/${c}/vllm/index.html" >/dev/null && { echo "$c"; break; }
+done
+# then, with that commit:
+git checkout -q <commit>
+export VLLM_USE_PRECOMPILED=1 VLLM_PRECOMPILED_WHEEL_COMMIT=<commit>
+/path/to/muse-venv/bin/pip install /tmp/vllmsrc
+```
+
+Takes about 3 minutes. Two traps: create the venv **without** `--system-site-packages`, or a stock 0.27.1 in the parent environment silently satisfies the requirement and you end up with no Muse class; and `pip install git+...@<short-hash>` fails because the shallow clone cannot resolve it. Verify with:
+
+```bash
+/path/to/muse-venv/bin/python -c "from vllm.model_executor.models.registry import ModelRegistry as R; print('MuseGlimmerForConditionalGeneration' in R.get_supported_archs())"
+```
+
 The three environment variables matter as much as the flags:
 
 ```bash

@@ -142,6 +142,37 @@
     ],
     "verdict": "On hardware without P2P, PP=2 dominates TP=2 for every workload except single-stream latency. It is the correct way to use a second card when the model fits but you want a deeper KV pool: full single-card throughput, 2.3x the context capacity, and the fastest prefill measured in this lab."
   },
+  "muse_glimmer_pp2": {
+    "why": "Muse Glimmer was the fastest model measured on a single card (790 tok/s at 16 agents). PP=2 was the best dual-card mode measured on Qwen 27B. This run combines them.",
+    "checkpoint": "dudeman2512/Muse-Glimmer-30B-INT4-W4A16",
+    "engine": "vLLM 0.26.1rc1.dev1078+gfe76112ff (dev build, own venv). Stock 0.27.1 has no MuseGlimmerForConditionalGeneration in its registry.",
+    "layout": "--pipeline-parallel-size 2 --max-model-len 131072 --kv-cache-dtype bfloat16 --attention-backend TRITON_ATTN --gpu-memory-utilization 0.92 --max-num-seqs 32, VLLM_USE_FLASHINFER_SAMPLER=0",
+    "load_to_api_ready_s": 160,
+    "kv_cache_tokens": 5254908,
+    "max_concurrency_at_128k": 40.09,
+    "ttft_short_ms": 26.0,
+    "decode_tok_s": 57.13,
+    "agg_2_tok_s": 82.61,
+    "agg_4_tok_s": 224.12,
+    "agg_16_tok_s": 626.42,
+    "per_agent_tok_s_16": 39.95,
+    "agg_32_tok_s": 1102.61,
+    "per_agent_tok_s_32": 35.15,
+    "prefill_53k_ttft_s": 18.05,
+    "prefill_prompt_tokens": 52864,
+    "power_16_agents_median_w": 405.77,
+    "power_32_agents_median_w": 422.08,
+    "max_temp_c": 62.0,
+    "findings": [
+      "1102.6 tok/s at 32 agents is the highest single-endpoint throughput measured anywhere in this lab, beating the 895.2 tok/s that Qwen 27B reached at PP=2 and the 790 tok/s Muse reached on one card.",
+      "KV pool is 5,254,908 tokens for 40.09x concurrency at 128K - roughly double the 2.64M single-card figure, and the deepest pool measured in the lab despite bf16 KV (cc 8.0 cannot use FP8 on this checkpoint).",
+      "At 16 agents PP=2 gives 626.4 tok/s versus 790 on a single card. The second card does NOT help at moderate concurrency here; the win only appears at 32 agents where a single card runs out of room.",
+      "TTFT is 26.0 ms, the lowest in the lab, because the MoE checkpoint activates few parameters per token.",
+      "Single-stream decode is 57.1 tok/s, essentially identical to Qwen 27B at PP=2 (57.5). As with Qwen, pipeline parallel gives no single-stream benefit.",
+      "Power at 32 agents (422 W median) is the opposite of the 72B TP=2 behaviour, where heavy batch DROVE power down. PP=2 keeps both cards genuinely busy instead of blocking them on a host-staged allreduce."
+    ],
+    "verdict": "Muse on PP=2 is the throughput champion of the lab at 1102.6 tok/s and holds a 5.25M-token KV pool. But the honest caveat is that a single card already delivers 790 tok/s at 16 agents, so the second card only earns its place above ~16 concurrent agents or when the deeper KV pool is the point."
+  },
   "deltas_tp2_vs_tp1": {
     "single_decode": "+23.4%",
     "agg_2": "+13.0%",
