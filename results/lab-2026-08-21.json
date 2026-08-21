@@ -1,0 +1,128 @@
+{
+  "lab": "cmp-170hx-inference",
+  "date": "2026-08-21",
+  "hardware": {
+    "gpu": "NVIDIA CMP 170HX",
+    "silicon": "GA100 Ampere",
+    "compute_capability": "8.0",
+    "sm_count": 70,
+    "vram_gib": 64,
+    "memory": "HBM2e",
+    "tdp_w": 250,
+    "driver": "610.57.04",
+    "fma_lock": "unlocked",
+    "pcie": {
+      "gen_current": 2,
+      "width_this_run": 16,
+      "stock_typical_width": 4,
+      "note": "Gen2 speed is a software unlock. x16 width usually needs the capacitor solder mod; this rental already negotiated x16."
+    }
+  },
+  "software": {
+    "engine": "vLLM 0.27.1",
+    "torch": "2.13.0+cu130",
+    "kv_cache_dtype": "fp8",
+    "gpu_memory_utilization": 0.95
+  },
+  "models": {
+    "qwen38_awq": "philbert440/Qwen3.8-27B-W4A16-AWQ",
+    "qwen72_awq": "Qwen/Qwen2.5-72B-Instruct-AWQ"
+  },
+  "baseline": {
+    "label": "2x RTX PRO 2000 16GB, TP=2 over PCIe (no NVLink)",
+    "tdp_w_pair": 140,
+    "qwen38_no_mtp_tok_s": 31.34,
+    "qwen38_mtp3_tok_s": 55.2,
+    "qwen38_mtp3_4agent_agg_tok_s": 177.4,
+    "qwen38_4agent_no_mtp_agg_tok_s": 58.25,
+    "note": "Owned 70 W-class workstation. Numbers from the same vLLM 0.27.1 / W4A16 recipe, not a fresh rerun on lab day."
+  },
+  "microbench": {
+    "hbm_gb_s": 1258,
+    "bf16_tflops": 177,
+    "fp16_tflops": 175,
+    "fp32_tflops": 12.2,
+    "h2d_gb_s_gen2_x4": 1.7,
+    "d2h_gb_s_gen2_x4": 1.7,
+    "h2d_gb_s_gen2_x16": 6.63,
+    "d2h_gb_s_gen2_x16": 6.71
+  },
+  "qwen38_no_mtp": {
+    "max_model_len": 131072,
+    "load_gib": 17.8,
+    "load_s": 6.55,
+    "kv_tokens": 1204406,
+    "concurrency_at_128k": 9.19,
+    "ttft_ms": 81.5,
+    "decode_tok_s": 57.52,
+    "agg_2_tok_s": 108.9,
+    "agg_4_tok_s": 208.2,
+    "prefill_wall_s": 27.0
+  },
+  "qwen38_mtp": {
+    "code_prompt": "Write a complete Python module: thread-safe LRU cache with TTL, type hints, and docstrings.",
+    "depths": [
+      {"n": 0, "kv_tokens": 1204406, "concurrency_128k": 9.19, "code_tok_s": 57.52},
+      {"n": 1, "kv_tokens": 1082768, "concurrency_128k": 8.26, "code_tok_s": 66.29},
+      {"n": 2, "kv_tokens": 1047181, "concurrency_128k": 7.99, "code_tok_s": 77.68},
+      {"n": 3, "kv_tokens": 1013443, "concurrency_128k": 7.73, "code_tok_s": 88.31},
+      {"n": 4, "kv_tokens": 971243, "concurrency_128k": 7.41, "code_tok_s": 86.83}
+    ],
+    "mtp3": {
+      "load_gib": 18.59,
+      "load_s": 7.66,
+      "single_tok_s": 88.53,
+      "prose_tok_s": 81.77,
+      "sweep_agg_tok_s": {"1": 82.5, "2": 110.5, "4": 294.6, "8": 491.2, "16": 641.4},
+      "sweep_per_tok_s_16": 46.5,
+      "packing_agents": {"131072": 7, "65536": 15, "32768": 30, "16384": 61, "8192": 123},
+      "slot_cap": 16
+    }
+  },
+  "power_w": {
+    "idle": 40.3,
+    "qwen38_mtp3_1_agent_median": 205.05,
+    "qwen38_mtp3_1_agent_max": 212.41,
+    "qwen38_mtp3_16_agent_median": 248.4,
+    "qwen38_mtp3_16_agent_max": 253.42,
+    "qwen72_1_agent_mean": 249.4,
+    "qwen72_1_agent_max": 252.5
+  },
+  "vision": {
+    "jpeg_bytes": 109244,
+    "ttft_s_thinking_off": 0.465,
+    "total_s": 0.496,
+    "prompt_tokens": 668,
+    "answer": "Dog",
+    "note": "Real JPEG via data URL through Qwen3VLProcessor. Text TTFT on the same engine is ~100 ms."
+  },
+  "buried_key": {
+    "key": "K-7a3c91e0b24f58d1c6a90e2b",
+    "enable_thinking": false,
+    "qwen38_128k": {"prompt_tokens": 110746, "ttft_s": 82.69, "prefill_tok_s": 1340, "pass": true},
+    "qwen38_256k": {
+      "max_model_len": 262144,
+      "kv_tokens": 1101297,
+      "concurrency_at_256k": 4.2,
+      "prompt_110k": {"prompt_tokens": 110749, "ttft_s": 82.74, "prefill_tok_s": 1339, "pass": true},
+      "prompt_200k": {"prompt_tokens": 199936, "ttft_s": 198.9, "prefill_tok_s": 1005, "pass": true},
+      "decode_thinking_on_tok_s": 86.88,
+      "decode_thinking_off_tok_s": 109.31
+    },
+    "qwen72_32k": {"prompt_tokens": 29987, "ttft_s": 46.1, "prefill_tok_s": 650.5, "pass": true}
+  },
+  "qwen72_awq": {
+    "native_max_model_len": 32768,
+    "load_gib": 38.77,
+    "weights_s": 9.38,
+    "load_s": 20.28,
+    "kv_tokens": 123744,
+    "concurrency_at_32k": 3.78,
+    "decode_tok_s": 25.77,
+    "ttft_ms_warm": 53,
+    "agg_4_tok_s": 100.4,
+    "per_4_tok_s": 25.44,
+    "note": "vLLM rejected max-model-len 131072 (max_position_embeddings=32768). Do not set VLLM_ALLOW_LONG_MAX_MODEL_LEN.",
+    "vllm_random": "see results/vllm-random-72b.json"
+  }
+}

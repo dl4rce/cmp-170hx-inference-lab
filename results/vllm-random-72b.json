@@ -1,0 +1,18 @@
+{
+  "suite": "vllm bench serve --dataset-name random",
+  "why": "This is the upstream vLLM serving CLI (ISL/OSL + concurrency). Same shape as published 70B papers and Red Hat/NVIDIA GuideLLM profiles, without a ShareGPT download. Prefix caching was on; later 128-token TTFT can look optimistic.",
+  "model": "Qwen/Qwen2.5-72B-Instruct-AWQ",
+  "served_name": "qwen72-awq",
+  "engine": "vLLM 0.27.1",
+  "max_model_len": 32768,
+  "max_num_seqs": 4,
+  "date": "2026-08-21",
+  "cells": [
+    {"isl": 128, "osl": 128, "concurrency": 1, "n": 8, "output_tok_s": 24.77, "total_tok_s": 55.15, "median_ttft_ms": 210.01, "median_tpot_ms": 39.03, "duration_s": 41.34},
+    {"isl": 512, "osl": 128, "concurrency": 1, "n": 8, "output_tok_s": 23.19, "total_tok_s": 121.21, "median_ttft_ms": 513.10, "median_tpot_ms": 39.41, "duration_s": 44.15},
+    {"isl": 2048, "osl": 128, "concurrency": 1, "n": 8, "output_tok_s": 18.36, "total_tok_s": 316.20, "median_ttft_ms": 1931.91, "median_tpot_ms": 39.73, "duration_s": 55.79},
+    {"isl": 8192, "osl": 128, "concurrency": 1, "n": 4, "output_tok_s": 9.66, "total_tok_s": 629.91, "median_ttft_ms": 8092.49, "median_tpot_ms": 40.66, "duration_s": 53.02},
+    {"isl": 128, "osl": 256, "concurrency": 1, "n": 8, "output_tok_s": 25.39, "total_tok_s": 40.96, "median_ttft_ms": 55.87, "median_tpot_ms": 39.34, "duration_s": 80.67, "note": "TTFT helped by prefix cache from prior 128-ISL cells"},
+    {"isl": 512, "osl": 128, "concurrency": 4, "n": 16, "output_tok_s": 79.37, "total_tok_s": 414.82, "median_ttft_ms": 808.86, "median_tpot_ms": 40.16, "duration_s": 25.80}
+  ]
+}
