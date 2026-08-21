@@ -10,6 +10,9 @@ Checkpoints (public Hugging Face):
 
 - `philbert440/Qwen3.8-27B-W4A16-AWQ` (with MTP weights)
 - `Qwen/Qwen2.5-72B-Instruct-AWQ`
+- `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` (6/6 shards SHA-256 vs Hub LFS)
+
+Tried, **did not serve** on this frozen vLLM 0.27.1 recipe: Gemma 4 31B AWQ and Muse Glimmer 30B. Details: [`UNSUPPORTED.md`](UNSUPPORTED.md).
 
 Scripts in `scripts/` talk to a local OpenAI-compatible server (`--base-url http://127.0.0.1:8000` by default). They do not contain hostnames, IPs, or cloud account data.
 
@@ -62,3 +65,24 @@ python3 scripts/bench_72b.py --base-url http://127.0.0.1:8000 --model qwen72-awq
 Do not force 128K with `VLLM_ALLOW_LONG_MAX_MODEL_LEN`. Why this suite (vs ShareGPT / GuideLLM / MMLU): [`docs/70B.md`](70B.md).
 
 256K: same 27B MTP-3 serve with `--max-model-len 262144`. Then `bench_buried_key.py --target 200000`.
+
+Qwen3.6 35B-A3B (no MTP, this engine’s fast path):
+
+```bash
+vllm serve /path/to/Qwen3.6-35B-A3B-AWQ-4bit \
+  --served-model-name qwen36-local \
+  --host 127.0.0.1 --port 8000 \
+  --tensor-parallel-size 1 \
+  --max-model-len 131072 \
+  --max-num-seqs 16 \
+  --max-num-batched-tokens 8192 \
+  --gpu-memory-utilization 0.95 \
+  --kv-cache-dtype fp8 \
+  --enable-chunked-prefill \
+  --enable-prefix-caching \
+  --trust-remote-code
+
+python3 scripts/verify_hf_dir.py --repo cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit --dir /path/to/snapshot
+python3 scripts/bench_decode.py --base-url http://127.0.0.1:8000 --model qwen36-local
+python3 scripts/bench_mtp.py --base-url http://127.0.0.1:8000 --model qwen36-local --kv-tokens 3159025
+```

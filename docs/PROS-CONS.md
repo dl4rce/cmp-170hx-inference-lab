@@ -6,6 +6,7 @@ Measured 2026-08-21 on one unlocked card (64 GB, FMA on, PCIe Gen2 ×16, vLLM 0.
 
 - **64 GB HBM2e** after the 8 GB SKU unlock. A used 3090 is 24 GB; a 5090 is 32 GB. This is the only reason to care.
 - **HBM bandwidth** ~1.26 TB/s in our microbench. Decode loves that more than GDDR on 16 GB workstation cards.
+- **Qwen3.6 35B-A3B AWQ** (~3B active): **135 tok/s** single stream, **1 261 tok/s** at 16 agents, **3.16M** FP8 KV (24× at 128K). MTP-3 does not help single-stream on this MoE.
 - **Qwen3.8 27B W4A16** at 128K with a ~1.0–1.2M token FP8 KV pool. MTP-3: **88 tok/s** single stream, **641 tok/s** aggregate at 16 slots.
 - **Native 256K** on 27B: 1.10M KV, exact retrieval at 200k prompt tokens.
 - **72B W4A16 actually loads** (38.8 GiB in ~20 s on Gen2 ×16). A 24 GB 3090 cannot hold that checkpoint. Native context is **32K**, decode **26 tok/s**, already at the 250 W cap. Standard vLLM random ISL/OSL: 25→10 tok/s as prompts go 128→8k; 4-wide **79 tok/s** aggregate.
@@ -18,7 +19,7 @@ Measured 2026-08-21 on one unlocked card (64 GB, FMA on, PCIe Gen2 ×16, vLLM 0.
 - **250 W** and mining cooling. 16-agent 27B already 248–253 W. 72B hits TDP on **one** stream. A quiet desktop without a proper cooler is a bad idea.
 - **Unlock + SKU lottery.** 8 GB→64 GB vs 10 GB→40 GB. 80 GB claims are unstable. Software unlock is experimental; Secure Boot off; persistence is patched modules.
 - **MTP-4 is not free speed.** Depth 3 peaked; depth 4 was slower and smaller KV.
-- **Tokens per watt** at 1–4 agents does not beat a 2×70 W PRO 2000 box on 27B. The 170HX wins when you fill 8–16 streams or when the model simply will not fit in 16–24 GB.
+- **Tokens per watt** at 1–4 agents on **dense 27B** does not beat a 2×70 W PRO 2000 box. The 170HX wins when you fill 8–16 streams, when the model will not fit in 16–24 GB, or on a **~3B-active MoE** (Qwen3.6) that actually uses the 64 GB KV pool.
 - **Multi-card 300B MoE** over this link, with no NVLink and no FP8, is a science project. Public four-card write-ups had to avoid tensor parallel.
 
 ## What 1 500–1 800 € is paying for

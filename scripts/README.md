@@ -12,7 +12,7 @@ All talk to a local OpenAI-compatible server. Defaults: `--base-url http://127.0
 | `bench_power.py` | `nvidia-smi power.draw` during 1-agent and N-agent decode |
 | `bench_72b.py` | 72B decode, 4-agent, ~30k buried key (`--model qwen72-awq`) |
 | `bench_vllm_random.sh` | Upstream `vllm bench serve --dataset-name random` ISL/OSL matrix |
-| `plot_results.py` | Rebuild `figures/*.svg` from `results/*.json` |
+| `plot_results.py` | Rebuild `figures/*.svg` from `results/*.json` (including KV packing and agent comparison) |
 | `verify_hf_dir.py` | SHA-256 of local `.safetensors` vs Hub LFS oids |
 | `install-gitleaks-hook.sh` | Install the pre-commit secret scan |
 

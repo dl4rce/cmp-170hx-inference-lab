@@ -26,7 +26,10 @@
   },
   "models": {
     "qwen38_awq": "philbert440/Qwen3.8-27B-W4A16-AWQ",
-    "qwen72_awq": "Qwen/Qwen2.5-72B-Instruct-AWQ"
+    "qwen72_awq": "Qwen/Qwen2.5-72B-Instruct-AWQ",
+    "qwen36_awq": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
+    "gemma4_awq": "QuantTrio/gemma-4-31B-it-AWQ",
+    "muse_w4a16": "RedHatAI/Muse-Glimmer-30B-W4A16"
   },
   "baseline": {
     "label": "2x RTX PRO 2000 16GB, TP=2 over PCIe (no NVLink)",
@@ -62,20 +65,57 @@
   "qwen38_mtp": {
     "code_prompt": "Write a complete Python module: thread-safe LRU cache with TTL, type hints, and docstrings.",
     "depths": [
-      {"n": 0, "kv_tokens": 1204406, "concurrency_128k": 9.19, "code_tok_s": 57.52},
-      {"n": 1, "kv_tokens": 1082768, "concurrency_128k": 8.26, "code_tok_s": 66.29},
-      {"n": 2, "kv_tokens": 1047181, "concurrency_128k": 7.99, "code_tok_s": 77.68},
-      {"n": 3, "kv_tokens": 1013443, "concurrency_128k": 7.73, "code_tok_s": 88.31},
-      {"n": 4, "kv_tokens": 971243, "concurrency_128k": 7.41, "code_tok_s": 86.83}
+      {
+        "n": 0,
+        "kv_tokens": 1204406,
+        "concurrency_128k": 9.19,
+        "code_tok_s": 57.52
+      },
+      {
+        "n": 1,
+        "kv_tokens": 1082768,
+        "concurrency_128k": 8.26,
+        "code_tok_s": 66.29
+      },
+      {
+        "n": 2,
+        "kv_tokens": 1047181,
+        "concurrency_128k": 7.99,
+        "code_tok_s": 77.68
+      },
+      {
+        "n": 3,
+        "kv_tokens": 1013443,
+        "concurrency_128k": 7.73,
+        "code_tok_s": 88.31
+      },
+      {
+        "n": 4,
+        "kv_tokens": 971243,
+        "concurrency_128k": 7.41,
+        "code_tok_s": 86.83
+      }
     ],
     "mtp3": {
       "load_gib": 18.59,
       "load_s": 7.66,
       "single_tok_s": 88.53,
       "prose_tok_s": 81.77,
-      "sweep_agg_tok_s": {"1": 82.5, "2": 110.5, "4": 294.6, "8": 491.2, "16": 641.4},
+      "sweep_agg_tok_s": {
+        "1": 82.5,
+        "2": 110.5,
+        "4": 294.6,
+        "8": 491.2,
+        "16": 641.4
+      },
       "sweep_per_tok_s_16": 46.5,
-      "packing_agents": {"131072": 7, "65536": 15, "32768": 30, "16384": 61, "8192": 123},
+      "packing_agents": {
+        "131072": 7,
+        "65536": 15,
+        "32768": 30,
+        "16384": 61,
+        "8192": 123
+      },
       "slot_cap": 16
     }
   },
@@ -86,7 +126,11 @@
     "qwen38_mtp3_16_agent_median": 248.4,
     "qwen38_mtp3_16_agent_max": 253.42,
     "qwen72_1_agent_mean": 249.4,
-    "qwen72_1_agent_max": 252.5
+    "qwen72_1_agent_max": 252.5,
+    "qwen36_no_mtp_1_agent_median": 157.61,
+    "qwen36_no_mtp_16_agent_median": 189.64,
+    "qwen36_mtp3_1_agent_median": 134.68,
+    "qwen36_mtp3_16_agent_median": 191.11
   },
   "vision": {
     "jpeg_bytes": 109244,
@@ -99,17 +143,37 @@
   "buried_key": {
     "key": "K-7a3c91e0b24f58d1c6a90e2b",
     "enable_thinking": false,
-    "qwen38_128k": {"prompt_tokens": 110746, "ttft_s": 82.69, "prefill_tok_s": 1340, "pass": true},
+    "qwen38_128k": {
+      "prompt_tokens": 110746,
+      "ttft_s": 82.69,
+      "prefill_tok_s": 1340,
+      "pass": true
+    },
     "qwen38_256k": {
       "max_model_len": 262144,
       "kv_tokens": 1101297,
       "concurrency_at_256k": 4.2,
-      "prompt_110k": {"prompt_tokens": 110749, "ttft_s": 82.74, "prefill_tok_s": 1339, "pass": true},
-      "prompt_200k": {"prompt_tokens": 199936, "ttft_s": 198.9, "prefill_tok_s": 1005, "pass": true},
+      "prompt_110k": {
+        "prompt_tokens": 110749,
+        "ttft_s": 82.74,
+        "prefill_tok_s": 1339,
+        "pass": true
+      },
+      "prompt_200k": {
+        "prompt_tokens": 199936,
+        "ttft_s": 198.9,
+        "prefill_tok_s": 1005,
+        "pass": true
+      },
       "decode_thinking_on_tok_s": 86.88,
       "decode_thinking_off_tok_s": 109.31
     },
-    "qwen72_32k": {"prompt_tokens": 29987, "ttft_s": 46.1, "prefill_tok_s": 650.5, "pass": true}
+    "qwen72_32k": {
+      "prompt_tokens": 29987,
+      "ttft_s": 46.1,
+      "prefill_tok_s": 650.5,
+      "pass": true
+    }
   },
   "qwen72_awq": {
     "native_max_model_len": 32768,
@@ -124,5 +188,87 @@
     "per_4_tok_s": 25.44,
     "note": "vLLM rejected max-model-len 131072 (max_position_embeddings=32768). Do not set VLLM_ALLOW_LONG_MAX_MODEL_LEN.",
     "vllm_random": "see results/vllm-random-72b.json"
+  },
+  "qwen36_no_mtp": {
+    "max_model_len": 131072,
+    "load_gib": 22.87,
+    "load_s": 44.97,
+    "weights_s": 28.76,
+    "kv_tokens": 3159025,
+    "concurrency_at_128k": 24.1,
+    "ttft_ms": 39.6,
+    "decode_tok_s": 134.76,
+    "code_tok_s": 134.56,
+    "agg_2_tok_s": 234.24,
+    "agg_4_tok_s": 420.72,
+    "prefill_ttft_s": 5.64,
+    "prefill_prompt_tokens": 48018,
+    "sweep_agg_tok_s": {
+      "1": 129.35,
+      "2": 226.7,
+      "4": 410.05,
+      "8": 734.28,
+      "16": 1260.61
+    },
+    "packing_agents": {
+      "131072": 24,
+      "65536": 48,
+      "32768": 96,
+      "16384": 192,
+      "8192": 385
+    },
+    "power_w_1_median": 157.61,
+    "power_w_16_median": 189.64,
+    "note": "Hybrid Gated-DeltaNet + MoE, ~3B active. FP8 KV. Hash-checked 6/6 Hub LFS shards."
+  },
+  "qwen36_mtp": {
+    "load_gib": 23.38,
+    "load_s": 49.47,
+    "kv_tokens": 2502283,
+    "concurrency_at_128k": 19.09,
+    "ttft_ms": 67.6,
+    "decode_tok_s": 125.59,
+    "code_tok_s": 120.62,
+    "sweep_agg_tok_s": {
+      "1": 119.92,
+      "2": 228.91,
+      "4": 429.61,
+      "8": 845.8,
+      "16": 1356.74
+    },
+    "packing_agents": {
+      "131072": 19,
+      "65536": 38,
+      "32768": 76,
+      "16384": 152,
+      "8192": 305
+    },
+    "note": "MTP-3 is slower than no-MTP on a single stream. 16-agent aggregate is slightly higher."
+  },
+  "skipped": {
+    "gemma4_31b": {
+      "wanted": "QuantTrio/gemma-4-31B-it-AWQ (~20 GiB, 7/7 shards hash-ok)",
+      "engine": "vLLM 0.27.1 + transformers 5.15.1, frozen recipe",
+      "status": "did_not_serve",
+      "reasons": [
+        "Gemma4ForConditionalGeneration: transformers 5.15 per-layer head_dim vs vLLM config convertor (AmbiguousGlobalPerLayerAttributeError).",
+        "After allow_global_per_layer_attribute_access=true on a local config copy: FP8 KV rejected on Triton attention for cc 8.0.",
+        "With --kv-cache-dtype bfloat16: weight load AssertionError torch.Size([512]) into torch.Size([256]) in gemma4.py load_weights."
+      ],
+      "not_done": "Did not upgrade vLLM or transformers (would break the measured 27B recipe)."
+    },
+    "muse_glimmer_30b": {
+      "wanted": "RedHatAI/Muse-Glimmer-30B-W4A16",
+      "architectures": [
+        "MuseGlimmerForConditionalGeneration"
+      ],
+      "engine": "vLLM 0.27.1 registry has no Muse/Glimmer class",
+      "status": "did_not_serve",
+      "reasons": [
+        "Upstream vLLM 0.27.1 model registry contains Gemma4* and Qwen3_5Moe* but not MuseGlimmer*.",
+        "Public deploy docs point at vllm/vllm-openai:muse-glimmer, a newer image. NVFP4 quants need Blackwell (cc 10.x); 170HX is cc 8.0."
+      ],
+      "not_done": "Did not download ~20 GiB of weights that this engine cannot load. Did not switch the rental to a different vLLM image."
+    }
   }
 }
