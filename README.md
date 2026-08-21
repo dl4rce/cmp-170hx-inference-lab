@@ -8,17 +8,18 @@ Full numbers: [`results/lab-2026-08-21.json`](results/lab-2026-08-21.json) · sc
 
 This repo has **no hostnames, IPs, accounts, or private checkpoints**. Scripts default to `http://127.0.0.1:8000`.
 
-## Sorted overview (one card, vLLM 0.27.1)
+## Sorted overview (one card)
 
-Public AWQ checkpoints. FP8 KV except where noted. Decode is median tok/s, thinking-on unless a gate required otherwise.
+Public 4-bit checkpoints. Decode is median tok/s, thinking-on unless a gate required otherwise. The Qwen rows are the frozen **vLLM 0.27.1** recipe with FP8 KV; Muse and Gemma need a newer engine and **bf16 KV** (details below).
 
 | Rank | Model | Fit | Single tok/s | 16-agent agg | KV @ native window | Notes |
 |---|---|---|---|---|---|---|
 | 1 | **Qwen3.6 35B-A3B** AWQ (~3B active) | 22.9 GiB | **134.8** | **1 261** | **3.16M / 24.1× @ 128K** | Hybrid GDN+MoE. MTP-3 is *slower* single-stream (125.6), 16-agent 1 357 |
 | 2 | Qwen3.8 **27B** W4A16 MTP-3 | 18.6 GiB | **88.3** | **641** | 1.01M / 7.73× @ 128K | Best 27B depth. No-MTP: 57.5 tok/s, 1.20M KV |
-| 3 | Qwen2.5 **72B** AWQ | 38.8 GiB | **25.8** | 100 @ 4-wide | 0.12M / 3.78× @ **32K** | vLLM refused 128K. Already ~250 W on one stream |
-| — | Gemma 4 **31B** AWQ | 20 GiB on disk | — | — | — | **Did not serve** on 0.27.1. [Why](docs/UNSUPPORTED.md) |
-| — | Muse Glimmer **30B** W4A16 | not downloaded | — | — | — | **Not in** vLLM 0.27.1. [Why](docs/UNSUPPORTED.md) |
+| 3 | **Muse Glimmer 30B** W4A16 | 21.0 GiB | 58.1 | **790** | 2.64M / 20.1× @ 128K | Best aggregate in the lab. Needs a dev-branch vLLM |
+| 4 | **Gemma 4 31B** QAT W4A16 | 19.8 GiB | 48.8 | 645 | 0.36M / 2.71× @ 128K | Official QAT checkpoint. Chat endpoint only |
+| 5 | Qwen2.5 **72B** AWQ | 38.8 GiB | **25.8** | 100 @ 4-wide | 0.12M / 3.78× @ **32K** | vLLM refused 128K. Already ~250 W on one stream |
+| — | Gemma 4 31B **AWQ** (QuantTrio) | 20 GiB on disk | — | — | — | Wrong checkpoint class. [Why](docs/UNSUPPORTED.md) |
 
 Same 27B recipe on **2× RTX PRO 2000 16 GB**, TP=2, no NVLink: 31 tok/s (off) / 55 tok/s (MTP-3). That box cannot load 72B AWQ.
 
@@ -62,6 +63,31 @@ Power: idle ~43 W; 1 agent ~158 W at 135 tok/s. The 250 W cap is not the story o
 ![27B vs dual 16GB](figures/compare-27b.svg)
 
 ![Power](figures/power.svg)
+
+## Muse Glimmer 30B and Gemma 4 31B (what the frozen recipe could not do)
+
+Both were listed as “did not serve” on vLLM 0.27.1. Neither was a VRAM problem — both were engine problems, and both now run on the same card.
+
+What actually had to change:
+
+1. **A newer vLLM**, installed in a **second venv** so the measured 0.27.1 numbers above stay reproducible. `MuseGlimmer*` and `Gemma4*` are in that build's registry; 0.27.1 has no Muse class at all.
+2. **The right Gemma checkpoint.** The AWQ community repack trips a per-layer `head_dim` mismatch. The official **QAT compressed-tensors** build (`google/gemma-4-31B-it-qat-w4a16-ct`) loads clean.
+3. **`--kv-cache-dtype bfloat16`, not fp8.** Ampere cc 8.0 has no native `fp8e4nv`, so Triton attention refuses FP8 KV outright. This costs pool size and is the single biggest reason Gemma's KV looks small.
+4. **`VLLM_USE_FLASHINFER_SAMPLER=0`.** FlashInfer's JIT could not build its `sm_80` kernels against the CUDA headers in that wheel — it failed for attention *and* again, later, for sampling. The torch sampler sidesteps it.
+
+| | Muse Glimmer 30B | Gemma 4 31B QAT |
+|---|---|---|
+| Load | 21.02 GiB in 8.5 s | 19.78 GiB in 8.6 s |
+| KV @ 128K | **2 635 350** · 20.11× | 355 128 · 2.71× |
+| TTFT | 78 ms | **29 ms** |
+| Single decode | **58.1 tok/s** | 48.8 tok/s |
+| 4 / 8 / 16 agents | 226 / 357 / **790** tok/s | 184 / 348 / 645 tok/s |
+| Prefill ~48–53K | 33.6 s | 60.9 s |
+| Power 1 / 16 agents | 222 W / 249 W | 235 W / 250 W |
+
+**790 tok/s aggregate is the highest number in this lab** — higher than the 35B MoE at 16 agents on raw decode, though the MoE still wins on single-stream latency and KV depth.
+
+Gemma caveat: query it through **`/v1/chat/completions`**. Raw `/v1/completions` on this instruction/thinking checkpoint degenerates into repeated tokens. Its 128K window is nominal — with bf16 KV the pool only holds ~2.7 full contexts.
 
 ## Qwen2.5 72B AWQ (it fits, it crawls)
 

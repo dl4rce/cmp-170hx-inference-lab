@@ -127,6 +127,11 @@ def _sweep_vals(obj: dict) -> list[float]:
     return [round(s[k], 1) for k in ("1", "2", "4", "8", "16")]
 
 
+def _muse_sweep(obj: dict) -> list[float]:
+    keys = ("decode_tok_s", "agg_2_tok_s", "agg_4_tok_s", "agg_8_tok_s", "agg_16_tok_s")
+    return [round(obj[k], 1) for k in keys]
+
+
 def main() -> None:
     depths = DATA["qwen38_mtp"]["depths"]
     svg_bar(
@@ -203,29 +208,33 @@ def main() -> None:
     svg_bar(
         OUT / "single-stream.svg",
         "Single-stream decode, sorted",
-        ["35B-A3B", "35B MTP-3", "27B MTP-3", "27B off", "72B"],
+        ["35B-A3B", "35B MTP-3", "27B MTP-3", "Muse 30B", "27B off", "Gemma4 31B", "72B"],
         [
             round(q36["decode_tok_s"], 1),
             round(q36m["decode_tok_s"], 1),
             DATA["qwen38_mtp"]["mtp3"]["single_tok_s"],
+            round(DATA["muse_glimmer_30b"]["decode_tok_s"], 1),
             DATA["qwen38_no_mtp"]["decode_tok_s"],
+            round(DATA["gemma4_31b_qat"]["decode_tok_s"], 1),
             DATA["qwen72_awq"]["decode_tok_s"],
         ],
-        "tok/s · vLLM 0.27.1, one CMP 170HX",
+        "tok/s · one CMP 170HX (Muse/Gemma on bf16 KV)",
         highlight=0,
     )
     svg_bar(
         OUT / "kv-128k.svg",
-        "FP8 KV pool at 128K (72B is native 32K)",
-        ["35B-A3B", "35B MTP-3", "27B off", "27B MTP-3", "72B@32K"],
+        "KV pool at 128K (72B is native 32K)",
+        ["35B-A3B", "Muse 30B*", "35B MTP-3", "27B off", "27B MTP-3", "Gemma4*", "72B@32K"],
         [
             round(q36["kv_tokens"] / 1e6, 2),
+            round(DATA["muse_glimmer_30b"]["kv_tokens"] / 1e6, 2),
             round(q36m["kv_tokens"] / 1e6, 2),
             round(DATA["qwen38_no_mtp"]["kv_tokens"] / 1e6, 2),
             round(DATA["qwen38_mtp"]["depths"][3]["kv_tokens"] / 1e6, 2),
+            round(DATA["gemma4_31b_qat"]["kv_tokens"] / 1e6, 2),
             round(DATA["qwen72_awq"]["kv_tokens"] / 1e6, 2),
         ],
-        "million tokens in the GPU KV cache",
+        "million tokens in the GPU KV cache · * = bf16 KV, no FP8 on cc 8.0",
         highlight=0,
     )
     svg_grouped(
@@ -246,6 +255,8 @@ def main() -> None:
             ("27B MTP-3", _sweep_vals(DATA["qwen38_mtp"]["mtp3"])),
             ("35B-A3B no MTP", _sweep_vals(q36)),
             ("35B-A3B MTP-3", _sweep_vals(q36m)),
+            ("Muse 30B", _muse_sweep(DATA["muse_glimmer_30b"])),
+            ("Gemma4 31B", _muse_sweep(DATA["gemma4_31b_qat"])),
         ],
         "aggregate tok/s, short code prompt, max-num-seqs 16",
     )

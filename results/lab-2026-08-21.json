@@ -22,14 +22,24 @@
     "engine": "vLLM 0.27.1",
     "torch": "2.13.0+cu130",
     "kv_cache_dtype": "fp8",
-    "gpu_memory_utilization": 0.95
+    "gpu_memory_utilization": 0.95,
+    "second_engine": {
+      "label": "vLLM main-branch dev build (Muse/Gemma4 model support), separate venv",
+      "version": "0.1.dev19962+gc4dc58557",
+      "transformers": "5.15.1",
+      "kv_cache_dtype": "bfloat16",
+      "attention_backend": "TRITON_ATTN",
+      "env": "VLLM_USE_FLASHINFER_SAMPLER=0",
+      "why": "Ampere cc 8.0 has no native fp8e4nv, so Triton rejects FP8 KV; the FlashInfer JIT fails to build against the shipped CUDA headers. bfloat16 KV + Triton + torch sampler is the combination that runs."
+    }
   },
   "models": {
     "qwen38_awq": "philbert440/Qwen3.8-27B-W4A16-AWQ",
     "qwen72_awq": "Qwen/Qwen2.5-72B-Instruct-AWQ",
     "qwen36_awq": "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit",
     "gemma4_awq": "QuantTrio/gemma-4-31B-it-AWQ",
-    "muse_w4a16": "RedHatAI/Muse-Glimmer-30B-W4A16"
+    "gemma4_qat": "google/gemma-4-31B-it-qat-w4a16-ct",
+    "muse_w4a16": "dudeman2512/Muse-Glimmer-30B-INT4-W4A16"
   },
   "baseline": {
     "label": "2x RTX PRO 2000 16GB, TP=2 over PCIe (no NVLink)",
@@ -245,6 +255,56 @@
     },
     "note": "MTP-3 is slower than no-MTP on a single stream. 16-agent aggregate is slightly higher."
   },
+  "muse_glimmer_30b": {
+    "checkpoint": "dudeman2512/Muse-Glimmer-30B-INT4-W4A16",
+    "engine": "vLLM dev build (see software.second_engine)",
+    "vision_tower": "kept (loaded as shipped, no offline strip needed at 64 GB)",
+    "max_model_len": 131072,
+    "max_num_seqs": 16,
+    "load_gib": 21.02,
+    "load_s": 8.48,
+    "kv_tokens": 2635350,
+    "concurrency_at_128k": 20.11,
+    "ttft_ms": 77.7,
+    "decode_tok_s": 58.06,
+    "agg_2_tok_s": 113.22,
+    "agg_4_tok_s": 225.88,
+    "agg_8_tok_s": 357.43,
+    "agg_16_tok_s": 789.78,
+    "per_agent_tok_s_16": 51.01,
+    "prefill_ttft_s": 33.58,
+    "prefill_prompt_tokens": 52864,
+    "power_w_1_median": 221.84,
+    "power_w_16_median": 248.82,
+    "sanity": "greedy 'The capital of France is' -> ' Paris. It is the most populous city in France and'",
+    "note": "5/5 Hub LFS shards hash-checked. TP=1 on one card; FP8 KV is not available on cc 8.0, so bfloat16 KV."
+  },
+  "gemma4_31b_qat": {
+    "checkpoint": "google/gemma-4-31B-it-qat-w4a16-ct",
+    "quant": "compressed-tensors QAT W4A16",
+    "engine": "vLLM dev build (see software.second_engine)",
+    "max_model_len": 131072,
+    "max_num_seqs": 16,
+    "load_gib": 19.78,
+    "load_s": 8.6,
+    "kv_tokens": 355128,
+    "concurrency_at_128k": 2.71,
+    "kv_tokens_at_32k": 167883,
+    "concurrency_at_32k": 5.12,
+    "ttft_ms": 29.2,
+    "decode_tok_s": 48.79,
+    "agg_2_tok_s": 76.84,
+    "agg_4_tok_s": 184.22,
+    "agg_8_tok_s": 348.46,
+    "agg_16_tok_s": 644.61,
+    "per_agent_tok_s_16": 41.45,
+    "prefill_ttft_s": 60.9,
+    "prefill_prompt_tokens": 48021,
+    "power_w_1_median": 234.95,
+    "power_w_16_median": 249.75,
+    "sanity": "chat: 'What is the capital of France?' -> 'Paris'",
+    "note": "1/1 Hub LFS shard hash-checked. Use the chat endpoint: raw /v1/completions on this it/thinking checkpoint degenerates. KV pool is small because Gemma 4 keeps a large per-token KV footprint at bf16."
+  },
   "skipped": {
     "gemma4_31b": {
       "wanted": "QuantTrio/gemma-4-31B-it-AWQ (~20 GiB, 7/7 shards hash-ok)",
@@ -255,7 +315,8 @@
         "After allow_global_per_layer_attribute_access=true on a local config copy: FP8 KV rejected on Triton attention for cc 8.0.",
         "With --kv-cache-dtype bfloat16: weight load AssertionError torch.Size([512]) into torch.Size([256]) in gemma4.py load_weights."
       ],
-      "not_done": "Did not upgrade vLLM or transformers (would break the measured 27B recipe)."
+      "not_done": "Did not upgrade vLLM or transformers (would break the measured 27B recipe).",
+      "resolved_by": "gemma4_31b_qat — the official QAT compressed-tensors checkpoint on a second, isolated vLLM dev venv."
     },
     "muse_glimmer_30b": {
       "wanted": "RedHatAI/Muse-Glimmer-30B-W4A16",
@@ -268,7 +329,8 @@
         "Upstream vLLM 0.27.1 model registry contains Gemma4* and Qwen3_5Moe* but not MuseGlimmer*.",
         "Public deploy docs point at vllm/vllm-openai:muse-glimmer, a newer image. NVFP4 quants need Blackwell (cc 10.x); 170HX is cc 8.0."
       ],
-      "not_done": "Did not download ~20 GiB of weights that this engine cannot load. Did not switch the rental to a different vLLM image."
+      "not_done": "Did not download ~20 GiB of weights that this engine cannot load. Did not switch the rental to a different vLLM image.",
+      "resolved_by": "muse_glimmer_30b — a W4A16 checkpoint on a second, isolated vLLM dev venv that has MuseGlimmer* in the registry."
     }
   }
 }
