@@ -91,19 +91,19 @@ These two rows are **not directly comparable** to the Qwen rows: different engin
 
 ## Two cards: TP=2 is a trap without P2P
 
-A second rental put **2× 170HX** in one box (128 GB, both Gen2 ×16, `PHB` topology). Same engine, same checkpoint, same flags as the single-card 27B run — the only variable is `--tensor-parallel-size`.
+A second rental put **2× 170HX** in one box (128 GB, both Gen2 ×16, `PHB` topology). Same engine, same checkpoint, same flags as the single-card 27B run — the only variable is how the model is split across the two cards.
 
-| | TP=1 (one card) | TP=2 (both) | Two TP=1 servers |
-|---|---|---|---|
-| Single decode | 57.5 tok/s | **70.9** (+23%) | 57.5 |
-| 16 agents | 608 tok/s | **415** (−32%) | **754** |
-| 32 agents | — | — | **1 253** |
-| KV pool @128K | 1.19M / 9.1× | **2.98M / 22.8×** | 1.19M per server |
-| 48K prefill | **27.1 s** | 47.4 s (−75%) | 27.1 s |
+| | TP=1 (one card) | TP=2 (both) | PP=2 (both) | Two TP=1 servers |
+|---|---|---|---|---|
+| Single decode | 57.5 tok/s | **70.9** (+23%) | 57.5 | 57.5 |
+| 16 agents | 608 tok/s | 415 (−32%) | 605 | **754** |
+| 32 agents | — | — | 895 | **1 253** |
+| KV pool @128K | 1.19M / 9.1× | **2.98M / 22.8×** | 2.76M / 21.1× | 1.19M per server |
+| 48K prefill | 27.1 s | 47.4 s (−75%) | **14.8 s** (1.8× faster) | 27.1 s |
 
 **TP=2 makes one stream faster and everything else slower.** The crossover is around 3 agents.
 
-![Two cards: TP=2 vs sharding](figures/dual-card.svg)
+![Two cards: TP=2 vs PP=2 vs sharding](figures/dual-card.svg)
 
 The cause is in `nvidia-smi topo -p2p`: **`GNS` — GPU not supported**. Peer-to-peer is fused off in the CMP SKU, not blocked by IOMMU or ACS, so nothing in BIOS or the kernel recovers it. `torch.cuda.can_device_access_peer` is `False` both ways, device-to-device copies are host-staged at **5.85 GB/s** (no faster than the 6.17 GB/s H2D), and vLLM logs it plainly:
 
@@ -111,7 +111,26 @@ The cause is in `nvidia-smi topo -p2p`: **`GNS` — GPU not supported**. Peer-to
 
 Every layer's allreduce then crawls over the host bridge. Allreduce payload scales with batch size, so the penalty grows exactly where you wanted the second card to help.
 
-**If you are throughput-bound, do not use TP=2.** Run one TP=1 server per card behind a load balancer: **1 253 tok/s vs 415**, a **3.0×** win on identical silicon. Reserve TP=2 for models that do not fit in 64 GB, for a KV pool deeper than one card holds, or when single-stream latency is what you are buying.
+**If you are throughput-bound, do not use TP=2.** Run one TP=1 server per card behind a load balancer: **1 253 tok/s vs 415**, a **3.0×** win on identical silicon.
+
+### Pipeline parallel is the setting we should have reached for first
+
+`--pipeline-parallel-size 2` splits the model by **layer**, not by tensor. The only inter-GPU traffic is one activation handoff at the stage boundary, instead of an allreduce inside every layer — precisely the traffic that the dead link punishes. Same checkpoint, same flags, one word changed:
+
+| vs TP=2 | PP=2 result |
+|---|---|
+| 16 agents | **605 tok/s** vs 415 — **1.46×** |
+| 32 agents | **895 tok/s** — TP=2 could not scale here at all |
+| 48K prefill | **14.8 s** vs 47.4 s — **3.2×** faster |
+| KV pool | 2.76M tokens (21.1×) — within 7% of TP=2 |
+
+![48K prefill by parallelism mode](figures/dual-card-prefill.svg)
+
+**PP=2 matches a single card's throughput (605 vs 608 tok/s) while holding 2.3× the KV pool.** That is the combination we wanted from the second card and failed to get from TP=2: full speed *and* the capacity. Prefill is better than either alternative — even 1.8× faster than one card, since the stages overlap across a long prompt.
+
+The one thing it gives up is TP=2's single-stream gain: 57.5 tok/s, identical to one card. Pipeline parallel does not split per-token weight reads, so a lone request sees no extra bandwidth.
+
+**Practical ranking on a P2P-less box:** sharding for raw throughput → **PP=2** when you want depth without losing speed → TP=2 only for single-stream latency or a model that will not fit.
 
 ### Does the second card earn its keep on a 72B?
 

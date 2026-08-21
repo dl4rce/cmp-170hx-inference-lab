@@ -115,6 +115,33 @@
     ],
     "verdict": "The capacity claim holds in the sense that matters: 39 GiB of weights plus a 494,848-token KV pool simply does not fit on one 64 GB card at this batch size. But it costs throughput, and it does NOT extend the context window."
   },
+  "pipeline_parallel_pp2": {
+    "why": "PP=2 was listed as an untested alternative to TP=2. Pipeline parallel splits the model by LAYER instead of by tensor, so the only inter-GPU traffic is one activation handoff at the layer boundary per microbatch, rather than an allreduce inside every layer. On hardware without P2P this should matter enormously.",
+    "model": "Qwen3.8-27B-W4A16-AWQ (identical checkpoint to the TP=1 and TP=2 runs)",
+    "layout": "--pipeline-parallel-size 2 --max-model-len 131072 --kv-cache-dtype fp8 --gpu-memory-utilization 0.92 --max-num-seqs 32",
+    "kv_cache_tokens": 2763058,
+    "max_concurrency_at_128k": 21.08,
+    "ttft_short_ms": 83.7,
+    "decode_tok_s": 57.54,
+    "agg_2_tok_s": 110.29,
+    "agg_4_tok_s": 208.54,
+    "agg_16_tok_s": 604.66,
+    "per_agent_tok_s_16": 42.88,
+    "agg_32_tok_s": 895.2,
+    "per_agent_tok_s_32": 32.44,
+    "prefill_48k_ttft_s": 14.8,
+    "power_16_agents_median_w": 325.12,
+    "power_32_agents_median_w": 318.24,
+    "max_temp_c": 61.0,
+    "findings": [
+      "PP=2 beats TP=2 on throughput by 1.46x at 16 agents (604.7 vs 414.5 tok/s) and keeps scaling to 895.2 tok/s at 32 agents, which TP=2 could not reach.",
+      "PP=2 matches single-card TP=1 throughput almost exactly at 16 agents (604.7 vs 608.1 tok/s) while holding 2.3x the KV pool (2.76M vs 1.19M tokens). This is the key result: you get the capacity benefit of two cards without the throughput penalty of tensor parallel.",
+      "Prefill is where PP=2 wins outright: 14.8 s on 48K tokens versus 27.1 s for TP=1 and 47.4 s for TP=2. That is 3.2x faster than TP=2 and 1.8x faster than a single card, because pipeline stages overlap on the long prefill and the interconnect carries only layer-boundary activations.",
+      "PP=2 gives up the TP=2 single-stream gain: 57.5 tok/s, identical to TP=1 (57.5) and below TP=2 (70.9). Pipeline parallel does not split the per-token weight reads, so one stream sees no bandwidth benefit.",
+      "KV pool is slightly smaller than TP=2 (2.76M vs 2.98M tokens) because each stage keeps its own activation buffers, but the difference is only 7%."
+    ],
+    "verdict": "On hardware without P2P, PP=2 dominates TP=2 for every workload except single-stream latency. It is the correct way to use a second card when the model fits but you want a deeper KV pool: full single-card throughput, 2.3x the context capacity, and the fastest prefill measured in this lab."
+  },
   "deltas_tp2_vs_tp1": {
     "single_decode": "+23.4%",
     "agg_2": "+13.0%",
@@ -137,7 +164,8 @@
     "use_tp2_when": "The model does not fit in 64 GB (measured: 72B AWQ, 39 GiB weights, serves at TP=2 and cannot be served on one card with a useful KV pool), or you need a KV pool deeper than one card can hold, or you are latency-bound on a single stream (+23% decode).",
     "tp2_does_not_buy_context": "Measured: a second card does not extend the context window. The window is set by the checkpoint's max_position_embeddings, not by VRAM. Qwen2.5-72B-AWQ refused 128K at TP=2 because its config declares 32K; 128K needs YaRN rope-scaling enabled explicitly.",
     "use_two_tp1_servers_when": "You are throughput-bound and the model fits in one card. Measured 3.0x better (1253 vs 415 tok/s). Costs a load balancer and gives up the shared KV pool.",
-    "never_assume": "Do not assume TP=2 scales throughput on a card without P2P/NVLink. Measure both."
+    "use_pp2_when": "Measured best all-round use of a second card on this hardware. The model fits in one card but you want a deeper KV pool: PP=2 gives full single-card throughput (604.7 vs 608.1 tok/s at 16 agents), 2.3x the KV pool, and the fastest prefill in the lab (14.8 s on 48K). Prefer it over TP=2 unless single-stream latency is the goal.",
+    "never_assume": "Do not assume TP=2 scales throughput on a card without P2P/NVLink. Measure both. PP=2 was measured 1.46x faster than TP=2 at 16 agents and 3.2x faster on prefill."
   },
   "caveats": [
     "One 27B dense checkpoint on one rental instance. MoE models and larger checkpoints will shift the crossover point.",

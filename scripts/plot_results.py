@@ -262,16 +262,26 @@ def main() -> None:
         "aggregate tok/s, short code prompt, max-num-seqs 16",
     )
     tp1, tp2, shard = DUAL["tp1"], DUAL["tp2"], DUAL["two_tp1_servers"]
+    pp2 = DUAL["pipeline_parallel_pp2"]
     svg_grouped(
         OUT / "dual-card.svg",
-        "Two 170HX, same 27B: tensor-parallel vs sharding",
+        "Two 170HX, same 27B: tensor vs pipeline vs sharding",
         ["1 agent", "16 agents", "32 agents"],
         [
             ("TP=1 (one card)", [tp1["decode_tok_s"], tp1["agg_16_tok_s"], 0]),
             ("TP=2 (both cards)", [tp2["decode_tok_s"], tp2["agg_16_tok_s"], 0]),
+            ("PP=2 (both cards)", [pp2["decode_tok_s"], pp2["agg_16_tok_s"], pp2["agg_32_tok_s"]]),
             ("2x TP=1 servers", [tp1["decode_tok_s"], shard["agg_16_tok_s"], shard["agg_32_tok_s"]]),
         ],
         "aggregate tok/s · no P2P (GNS), so TP=2 allreduce is host-staged at 5.85 GB/s",
+    )
+    svg_bar(
+        OUT / "dual-card-prefill.svg",
+        "48K-token prefill: pipeline parallel wins outright",
+        ["TP=1 (one card)", "TP=2 (both)", "PP=2 (both)"],
+        [tp1["prefill_ttft_s"], tp2["prefill_ttft_s"], pp2["prefill_48k_ttft_s"]],
+        "time to first token, seconds (lower is better)",
+        highlight=2,
     )
     print("wrote", *sorted(p.name for p in OUT.glob("*.svg")))
 
