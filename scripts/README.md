@@ -1,6 +1,6 @@
 # Scripts
 
-All talk to a local OpenAI-compatible server. Defaults: `--base-url http://127.0.0.1:8000 --model qwen38-local`.
+All talk to a local OpenAI-compatible server. Defaults: `--base-url http://127.0.0.1:8000 --model qwen38-local`. **No hostnames or cloud IPs.**
 
 | Script | What it measures |
 |---|---|
@@ -13,3 +13,11 @@ All talk to a local OpenAI-compatible server. Defaults: `--base-url http://127.0
 | `bench_72b.py` | 72B decode, 4-agent, ~30k buried key (`--model qwen72-awq`) |
 | `bench_vllm_random.sh` | Upstream `vllm bench serve --dataset-name random` ISL/OSL matrix |
 | `plot_results.py` | Rebuild `figures/*.svg` from `results/*.json` |
+| `verify_hf_dir.py` | SHA-256 of local `.safetensors` vs Hub LFS oids |
+| `install-gitleaks-hook.sh` | Install the pre-commit secret scan |
+
+Gitleaks: [SECURITY.md](../SECURITY.md). After a Hub download:
+
+```bash
+python3 scripts/verify_hf_dir.py --repo org/name --dir /path/to/snapshot
+```

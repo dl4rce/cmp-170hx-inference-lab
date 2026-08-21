@@ -1,0 +1,52 @@
+# Public lab repo — gitleaks
+#
+# Default rules plus extra patterns that would leak this lab (rental SSH,
+# private LAN, Hugging Face tokens). Do not copy IPs, hostnames, or keys
+# into this tree. Scripts must stay on 127.0.0.1.
+
+title = "cmp-170hx-inference-lab gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local loopback, public docs, and the published buried-key needle (not a credential)"
+
+regexes = [
+  '''127\.0\.0\.1''',
+  '''http://127\.0\.0\.1:8000''',
+  '''K-7a3c91e0b24f58d1c6a90e2b''',
+  '''YOUR_[A-Z0-9_]+''',
+  '''\$\{[A-Z0-9_]+\}''',
+  '''(?:xxx+|XXX+|changeme|CHANGEME|placeholder|PLACEHOLDER|example|EXAMPLE)''',
+]
+
+paths = [
+  '''(^|/)\.git/''',
+  '''(^|/)__pycache__/''',
+  '''\.(png|jpe?g|gif|webp|ico|pdf)$''',
+]
+
+[[rules]]
+id = "huggingface-token"
+description = "Hugging Face access token"
+regex = '''\bhf_[A-Za-z0-9]{20,}\b'''
+tags = ["key", "huggingface"]
+
+[[rules]]
+id = "rfc1918-ipv4"
+description = "Private IPv4 (LAN / lab hosts must not be committed)"
+regex = '''\b(?:10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}|192\.168\.(?:[0-9]{1,3}\.)[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[0-1])\.(?:[0-9]{1,3}\.)[0-9]{1,3})\b'''
+tags = ["ip", "private"]
+
+[[rules]]
+id = "ssh-root-ipv4"
+description = "ssh root@IPv4 (rental / cloud). Loopback is allowlisted separately."
+regex = '''ssh(?:\s+\S+){0,12}\s+root@[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'''
+tags = ["ssh", "host"]
+
+[[rules]]
+id = "ssh-root-dns"
+description = "ssh root@hostname (rental / cloud DNS)"
+regex = '''ssh(?:\s+\S+){0,12}\s+root@[A-Za-z0-9._-]+\.[A-Za-z]{2,}'''
+tags = ["ssh", "host"]
