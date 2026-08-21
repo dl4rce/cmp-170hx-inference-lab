@@ -19,8 +19,6 @@ Public 4-bit checkpoints. Decode is median tok/s, thinking-on unless a gate requ
 | 3 | **Muse Glimmer 30B** W4A16 | 21.0 GiB | 58.1 | **790** | 2.64M / 20.1× @ 128K | Best aggregate in the lab. Needs a dev-branch vLLM |
 | 4 | **Gemma 4 31B** QAT W4A16 | 19.8 GiB | 48.8 | 645 | 0.36M / 2.71× @ 128K | Official QAT checkpoint. Chat endpoint only |
 | 5 | Qwen2.5 **72B** AWQ | 38.8 GiB | **25.8** | 100 @ 4-wide | 0.12M / 3.78× @ **32K** | vLLM refused 128K. Already ~250 W on one stream |
-| — | Gemma 4 31B **AWQ** (QuantTrio) | 20 GiB on disk | — | — | — | Wrong checkpoint class. [Why](docs/UNSUPPORTED.md) |
-
 Same 27B recipe on **2× RTX PRO 2000 16 GB**, TP=2, no NVLink: 31 tok/s (off) / 55 tok/s (MTP-3). That box cannot load 72B AWQ.
 
 ![Single-stream decode](figures/single-stream.svg)
