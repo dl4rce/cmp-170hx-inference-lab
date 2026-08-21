@@ -23,7 +23,8 @@ Measured 2026-08-21 on one unlocked card (64 GB, FMA on, PCIe Gen2 ×16). Qwen n
 - **MTP-4 is not free speed.** Depth 3 peaked; depth 4 was slower and smaller KV.
 - **Tokens per watt** at 1–4 agents on **dense 27B** does not beat a 2×70 W PRO 2000 box. The 170HX wins when you fill 8–16 streams, when the model will not fit in 16–24 GB, or on a **~3B-active MoE** (Qwen3.6) that actually uses the 64 GB KV pool.
 - **Newer architectures need a newer engine.** Neither Muse Glimmer nor Gemma 4 exists in vLLM 0.27.1's registry. Running them meant a dev-branch build in a second venv — fine for a lab, a real consideration if you want a stable pinned appliance.
-- **Multi-card 300B MoE** over this link, with no NVLink and no FP8, is a science project. Public four-card write-ups had to avoid tensor parallel.
+- **No P2P between cards.** `nvidia-smi topo -p2p` reports `GNS` (GPU not supported) — peer-to-peer is fused off in the mining SKU, so inter-GPU copies are host-staged at 5.85 GB/s and vLLM disables its custom allreduce. Measured on 2× 170HX: **TP=2 costs 32% of batch throughput** (608 → 415 tok/s at 16 agents) and 75% of prefill speed, while gaining 23% single-stream and a 2.5× KV pool. Two independent TP=1 servers hit **1 253 tok/s** — 3× TP=2. Scale by sharding, not tensor parallel.
+- **Multi-card 300B MoE** over this link, with no NVLink and no FP8, is a science project. Public four-card write-ups had to avoid tensor parallel — now you know why.
 
 ## What 1 500–1 800 € is paying for
 

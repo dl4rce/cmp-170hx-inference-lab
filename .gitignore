@@ -24,3 +24,6 @@ HF_TOKEN
 nohup.out
 *.log
 scratch/
+
+# local pre-change backups
+*.20*T*+0*

@@ -1,0 +1,116 @@
+{
+  "lab": "cmp-170hx-dual-card",
+  "date": "2026-08-21",
+  "question": "Do two CMP 170HX cards in one box beat one, and is TP=2 worth it without NVLink or P2P?",
+  "hardware": {
+    "gpu": "2x NVIDIA CMP 170HX",
+    "silicon": "GA100 Ampere",
+    "compute_capability": "8.0",
+    "vram_gib_each": 64,
+    "vram_gib_total": 128,
+    "driver": "610.57.04",
+    "pcie_gen": 2,
+    "pcie_width": 16,
+    "topology": "PHB (both cards traverse the PCIe host bridge; no NVLink, no PCIe switch)",
+    "cpu_threads": 64,
+    "host_ram_gib": 251,
+    "numa_nodes": 1
+  },
+  "interconnect": {
+    "nvidia_smi_topo_p2p": "GNS",
+    "gns_meaning": "GPU not supported - P2P is fused off in the CMP SKU itself",
+    "torch_can_device_access_peer": false,
+    "iommu": "amd_iommu=on iommu=pt",
+    "note": "P2P is NOT blocked by IOMMU or ACS; it is unavailable on the mining SKU. No BIOS or kernel change recovers it.",
+    "d2d_0_to_1_gb_s": 5.85,
+    "h2d_gb_s": 6.17,
+    "d2d_vs_h2d": "Inter-GPU copies are host-staged, so device-to-device is no faster than host-to-device.",
+    "vllm_custom_allreduce": "disabled",
+    "vllm_warning": "Custom allreduce is disabled because your platform lacks GPU P2P capability or P2P test failed."
+  },
+  "software": {
+    "engine": "vLLM 0.27.1",
+    "torch": "2.13.0+cu130",
+    "kv_cache_dtype": "fp8",
+    "gpu_memory_utilization": 0.95,
+    "note": "Identical engine and flags to results/lab-2026-08-21.json, so TP=1 here is directly comparable to the single-card lab."
+  },
+  "model": "philbert440/Qwen3.8-27B-W4A16-AWQ",
+  "serve_flags": "--max-model-len 131072 --max-num-seqs 16 --max-num-batched-tokens 8192 --gpu-memory-utilization 0.95 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching",
+  "tp1": {
+    "cards_used": 1,
+    "load_gib": 17.8,
+    "load_s": 6.33,
+    "kv_tokens": 1194211,
+    "concurrency_at_128k": 9.11,
+    "ttft_ms": 80.5,
+    "decode_tok_s": 57.47,
+    "agg_2_tok_s": 108.84,
+    "agg_4_tok_s": 208.48,
+    "agg_16_tok_s": 608.1,
+    "per_agent_tok_s_16": 43.05,
+    "prefill_ttft_s": 27.11,
+    "prefill_prompt_tokens": 48060,
+    "power_w_1_median": 266.19,
+    "power_w_16_median": 284.6,
+    "power_note": "Box total across both cards; the idle second card contributes ~40 W."
+  },
+  "tp2": {
+    "cards_used": 2,
+    "load_gib_per_card": 9.0,
+    "load_s": 4.49,
+    "kv_tokens": 2984072,
+    "concurrency_at_128k": 22.77,
+    "ttft_ms": 89.8,
+    "decode_tok_s": 70.94,
+    "agg_2_tok_s": 122.95,
+    "agg_4_tok_s": 193.31,
+    "agg_8_tok_s": 296.17,
+    "agg_16_tok_s": 414.53,
+    "agg_16_repeats": [413.61, 414.53, 414.48],
+    "per_agent_tok_s_16": 30.4,
+    "prefill_ttft_s": 47.42,
+    "prefill_prompt_tokens": 48060,
+    "power_w_1_median": 342.05,
+    "power_w_16_median": 266.79
+  },
+  "two_tp1_servers": {
+    "layout": "Two independent vLLM servers, CUDA_VISIBLE_DEVICES=0 on port 8000 and =1 on port 8001, TP=1 each, no collectives between them.",
+    "agg_16_tok_s": 754.0,
+    "per_agent_tok_s_16": 51.2,
+    "wall_s_16": 6.37,
+    "agg_32_tok_s": 1253.4,
+    "per_agent_tok_s_32": 42.8,
+    "wall_s_32": 7.66,
+    "note": "At 16 agents this beats TP=2 by 1.8x (754 vs 415). At 32 agents, which TP=2 cannot serve at max-num-seqs 16, it reaches 1253 tok/s - 3.0x the TP=2 16-agent figure on the same two cards.",
+    "tradeoff": "Each server is limited to a 64 GB card and a 1.19M-token KV pool, and you need a load balancer in front. There is no shared KV cache between the two."
+  },
+  "deltas_tp2_vs_tp1": {
+    "single_decode": "+23.4%",
+    "agg_2": "+13.0%",
+    "agg_4": "-7.3%",
+    "agg_16": "-31.8%",
+    "kv_pool": "+150%",
+    "prefill_48k": "-74.9% (27.1 s -> 47.4 s, i.e. much slower)",
+    "crossover": "TP=2 wins below ~3 concurrent agents and loses above it."
+  },
+  "findings": [
+    "TP=2 raises single-stream decode 23% (57.5 -> 70.9 tok/s) because the weights are split and each card moves half as many bytes per token.",
+    "TP=2 collapses batch throughput: 608 -> 415 tok/s at 16 agents, a 32% loss. Per-agent falls 43.0 -> 30.4 tok/s. Reproduced three times within 0.3%.",
+    "The cause is P2P: nvidia-smi reports GNS (GPU not supported), so vLLM disables its custom allreduce and every layer's collective is host-staged at 5.85 GB/s. At batch 16 the allreduce payload grows with batch size, so the interconnect dominates.",
+    "Prefill is 75% slower under TP=2 (27.1 s -> 47.4 s on 48K tokens) - prefill is compute-and-collective heavy and suffers most from the slow link.",
+    "The real prize is the KV pool: 1.19M -> 2.98M tokens (9.11x -> 22.77x concurrency at 128K), because both cards' HBM holds cache.",
+    "Two cards at 16 agents (415 tok/s) are beaten by ONE card at 16 agents (608 tok/s) while drawing similar power.",
+    "Measured directly: two independent TP=1 servers deliver 754 tok/s at 16 agents and 1253 tok/s at 32 agents, versus 415 tok/s for TP=2. Sharding beats tensor-parallel by 1.8x to 3.0x on the same two cards."
+  ],
+  "recommendation": {
+    "use_tp2_when": "The model does not fit in 64 GB, or you need a KV pool deeper than one card can hold, or you are latency-bound on a single stream (+23% decode).",
+    "use_two_tp1_servers_when": "You are throughput-bound and the model fits in one card. Measured 3.0x better (1253 vs 415 tok/s). Costs a load balancer and gives up the shared KV pool.",
+    "never_assume": "Do not assume TP=2 scales throughput on a card without P2P/NVLink. Measure both."
+  },
+  "caveats": [
+    "One 27B dense checkpoint on one rental instance. MoE models and larger checkpoints will shift the crossover point.",
+    "No accuracy testing; these are throughput numbers only.",
+    "Power is nvidia-smi summed across both cards, not a lab-grade shunt. The idle-card baseline (~40 W) is included in TP=1 box totals."
+  ]
+}

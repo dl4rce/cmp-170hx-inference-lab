@@ -133,6 +133,35 @@ Gemma 4 is the same serve line with `--reasoning-parser gemma4`, `--tool-call-pa
 - **`--kv-cache-dtype fp8` is not optional to change.** Triton attention rejects it on cc 8.0 (`native FP8 (fp8e4nv) requires SM89+`). Swapping to `--attention-backend FLASHINFER` to keep FP8 does **not** help — the JIT then fails on incompatible CUDA headers.
 - **Query Gemma through `/v1/chat/completions`.** Raw `/v1/completions` on this instruction/thinking checkpoint degenerates into repeated tokens. Also start it at `--max-model-len 131072`: the long-context stage of `bench_decode.py` sends ~52K tokens and returns HTTP 400 against a 32K server.
 
+## Dual-card runs
+
+A second rental instance with **2× CMP 170HX** (128 GB, both Gen2 ×16, `PHB`, single NUMA node), same vLLM 0.27.1 / torch 2.13.0+cu130 / FP8 KV recipe. TP=1 there reproduced the single-card lab to within 0.1% (57.47 vs 57.52 tok/s, KV 1.194M vs 1.204M), which is the cross-instance sanity check for every number in this repo.
+
+Interconnect first, before any model:
+
+```bash
+nvidia-smi topo -m            # PHB = both cards traverse the host bridge
+nvidia-smi topo -p2p rw       # GNS = P2P fused off in the SKU
+python3 -c "import torch; print(torch.cuda.can_device_access_peer(0,1))"
+```
+
+Then the same serve line twice, changing only `--tensor-parallel-size 1` → `2`, and a sharded comparison:
+
+```bash
+# one server per card, no collectives between them
+for i in 0 1; do
+  CUDA_VISIBLE_DEVICES=$i vllm serve /path/to/Qwen3.8-27B-W4A16-AWQ \
+    --served-model-name qwen38 --host 127.0.0.1 --port $((8000+i)) \
+    --tensor-parallel-size 1 --max-model-len 131072 --max-num-seqs 16 \
+    --gpu-memory-utilization 0.95 --kv-cache-dtype fp8 &
+done
+python3 scripts/bench_sharded.py   # splits N agents across both ports
+```
+
+The 16-agent TP=2 figure was repeated three times and landed within 0.3% (413.6 / 414.5 / 414.5 tok/s).
+
+Two script notes: `bench_power.py` originally parsed a single `nvidia-smi` row and crashed on a two-GPU box; it now sums power and memory across visible GPUs, takes max temperature, and reports `n_gpu`. Dual-card power figures are therefore **box totals**, and the TP=1 numbers include ~40 W from the idle second card. Also, on that image a preinstalled `torchaudio` (cu128) aborted every vLLM import against torch 2.13/cu130 — uninstalling it is harmless for text models.
+
 ## Coverage and what these numbers do not claim
 
 Deliberate gaps, so nobody reads more into the table than is there:
@@ -143,3 +172,4 @@ Deliberate gaps, so nobody reads more into the table than is there:
 - **Engine B has no MTP/speculative sweep.** Neither checkpoint was tested with a draft head.
 - **Baseline is not a same-day rerun.** The dual-16GB numbers come from the same recipe on the owned box, quoted from earlier runs.
 - **Power is `nvidia-smi`, not a shunt**, and one rental instance is one sample of silicon and cooling.
+- **The dual-card conclusion is one dense 27B checkpoint.** An MoE, or a model too large for one card, moves the TP=1/TP=2 crossover. The P2P finding itself (`GNS`) is a property of the SKU and generalises; the exact 32% penalty does not.

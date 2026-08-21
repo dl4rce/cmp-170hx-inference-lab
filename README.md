@@ -89,6 +89,30 @@ Gemma caveat: query it through **`/v1/chat/completions`**. Raw `/v1/completions`
 
 These two rows are **not directly comparable** to the Qwen rows: different engine, and bf16 KV roughly halves the pool against FP8. Serve commands and the accuracy gaps: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md).
 
+## Two cards: TP=2 is a trap without P2P
+
+A second rental put **2× 170HX** in one box (128 GB, both Gen2 ×16, `PHB` topology). Same engine, same checkpoint, same flags as the single-card 27B run — the only variable is `--tensor-parallel-size`.
+
+| | TP=1 (one card) | TP=2 (both) | Two TP=1 servers |
+|---|---|---|---|
+| Single decode | 57.5 tok/s | **70.9** (+23%) | 57.5 |
+| 16 agents | 608 tok/s | **415** (−32%) | **754** |
+| 32 agents | — | — | **1 253** |
+| KV pool @128K | 1.19M / 9.1× | **2.98M / 22.8×** | 1.19M per server |
+| 48K prefill | **27.1 s** | 47.4 s (−75%) | 27.1 s |
+
+**TP=2 makes one stream faster and everything else slower.** The crossover is around 3 agents.
+
+The cause is in `nvidia-smi topo -p2p`: **`GNS` — GPU not supported**. Peer-to-peer is fused off in the CMP SKU, not blocked by IOMMU or ACS, so nothing in BIOS or the kernel recovers it. `torch.cuda.can_device_access_peer` is `False` both ways, device-to-device copies are host-staged at **5.85 GB/s** (no faster than the 6.17 GB/s H2D), and vLLM logs it plainly:
+
+> Custom allreduce is disabled because your platform lacks GPU P2P capability
+
+Every layer's allreduce then crawls over the host bridge. Allreduce payload scales with batch size, so the penalty grows exactly where you wanted the second card to help.
+
+**If you are throughput-bound, do not use TP=2.** Run one TP=1 server per card behind a load balancer: **1 253 tok/s vs 415**, a **3.0×** win on identical silicon. Reserve TP=2 for models that do not fit in 64 GB, for a KV pool deeper than one card holds, or when single-stream latency is what you are buying.
+
+Full data: [`results/dual-card-2026-08-21.json`](results/dual-card-2026-08-21.json).
+
 ## Qwen2.5 72B AWQ (it fits, it crawls)
 
 **38.8 GiB** in 20 s · **25.8 tok/s** · native **32K** only · 250 W on one stream.

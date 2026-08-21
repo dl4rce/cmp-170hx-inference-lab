@@ -29,8 +29,13 @@ def smi() -> dict:
         ],
         text=True,
     ).strip()
-    p, t, u, m = [float(x) for x in out.split(",")]
-    return {"power_w": p, "temp_c": t, "util": u, "mem_mib": m}
+    rows = [[float(x) for x in ln.split(",")] for ln in out.splitlines() if ln.strip()]
+    # sum power/memory across all visible GPUs; max temp; mean utilisation
+    p = sum(r[0] for r in rows)
+    t = max(r[1] for r in rows)
+    u = sum(r[2] for r in rows) / len(rows)
+    m = sum(r[3] for r in rows)
+    return {"power_w": p, "temp_c": t, "util": u, "mem_mib": m, "n_gpu": len(rows)}
 
 
 def with_power(fn):
