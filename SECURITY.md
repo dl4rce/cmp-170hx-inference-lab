@@ -7,7 +7,7 @@ This repository is **public**. Treat every commit as world-readable.
 - Cloud or LAN **IPs**, SSH ports, hostnames, account IDs
 - API keys, Hugging Face tokens (`hf_…`), `.env` files
 - Private checkpoints or weight hashes that are not on a public Hub page
-- LinkedIn copy or personal contact details (`linkedin/` is gitignored)
+- Personal names, emails, or contact details
 
 Scripts in this tree talk to `http://127.0.0.1:8000` only.
 

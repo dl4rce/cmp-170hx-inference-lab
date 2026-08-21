@@ -107,7 +107,3 @@ After a Hub download, hash-check shards:
 ```bash
 python3 scripts/verify_hf_dir.py --repo org/name --dir /path/to/snapshot
 ```
-
-## Not in this repo
-
-Unlock patches, exploit write-ups, cloud IPs, private model hashes, LinkedIn copy, or a how-to for bypassing vendor locks beyond pointing at the public tools above.
