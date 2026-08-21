@@ -103,6 +103,8 @@ A second rental put **2× 170HX** in one box (128 GB, both Gen2 ×16, `PHB` topo
 
 **TP=2 makes one stream faster and everything else slower.** The crossover is around 3 agents.
 
+![Two cards: TP=2 vs sharding](figures/dual-card.svg)
+
 The cause is in `nvidia-smi topo -p2p`: **`GNS` — GPU not supported**. Peer-to-peer is fused off in the CMP SKU, not blocked by IOMMU or ACS, so nothing in BIOS or the kernel recovers it. `torch.cuda.can_device_access_peer` is `False` both ways, device-to-device copies are host-staged at **5.85 GB/s** (no faster than the 6.17 GB/s H2D), and vLLM logs it plainly:
 
 > Custom allreduce is disabled because your platform lacks GPU P2P capability
@@ -111,11 +113,29 @@ Every layer's allreduce then crawls over the host bridge. Allreduce payload scal
 
 **If you are throughput-bound, do not use TP=2.** Run one TP=1 server per card behind a load balancer: **1 253 tok/s vs 415**, a **3.0×** win on identical silicon. Reserve TP=2 for models that do not fit in 64 GB, for a KV pool deeper than one card holds, or when single-stream latency is what you are buying.
 
+### Does the second card earn its keep on a 72B?
+
+We asserted "use TP=2 when it does not fit", then measured it. Qwen2.5 72B AWQ (39 GiB of weights) at TP=2, 32K window, FP8 KV:
+
+| | one card | two cards, TP=2 |
+|---|---|---|
+| Single-stream decode | 25.8 tok/s | **37.1 tok/s** (+44%) |
+| KV pool | cramped at 32K | **494 848 tokens** (15.1× concurrency) |
+| 16 agents | — | 275 tok/s (17.8 per agent) |
+| 32 agents | — | 360 tok/s (11.6 per agent) |
+| 24K prefill | — | 51.0 s |
+
+The second card buys **headroom, not speed**. 360 tok/s at 32 agents is still below what a *single* card does with 27B (608 tok/s at 16). Power inverts what you would guess: **437 W** median on one stream, **304 W** at 32 agents — under batch the cards idle on the host-staged allreduce instead of computing.
+
+**The context window is not a VRAM problem.** Asking for 128K was rejected outright: this checkpoint declares `max_position_embeddings=32768`, and the advertised 128K needs YaRN rope-scaling turned on explicitly. The 32K ceiling on one card was the *model's* limit all along. A second card does not extend context — only the KV pool at a given length.
+
 Full data: [`results/dual-card-2026-08-21.json`](results/dual-card-2026-08-21.json).
 
 ## Qwen2.5 72B AWQ (it fits, it crawls)
 
 **38.8 GiB** in 20 s · **25.8 tok/s** · native **32K** only · 250 W on one stream.
+
+The 32K is the checkpoint's own `max_position_embeddings`, not a VRAM ceiling — confirmed when [two cards refused 128K too](#does-the-second-card-earn-its-keep-on-a-72b). A second card lifts this to 37.1 tok/s.
 
 vLLM random ISL/OSL: 25 / 23 / 18 / **10** tok/s at 128 / 512 / 2k / 8k →128; 4-wide **79** tok/s.
 

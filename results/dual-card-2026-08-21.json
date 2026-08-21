@@ -85,6 +85,36 @@
     "note": "At 16 agents this beats TP=2 by 1.8x (754 vs 415). At 32 agents, which TP=2 cannot serve at max-num-seqs 16, it reaches 1253 tok/s - 3.0x the TP=2 16-agent figure on the same two cards.",
     "tradeoff": "Each server is limited to a 64 GB card and a 1.19M-token KV pool, and you need a load balancer in front. There is no shared KV cache between the two."
   },
+  "capacity_test_72b_tp2": {
+    "why": "The 'use TP=2 when the model does not fit in 64 GB' claim was asserted but never measured. A 72B AWQ checkpoint (39 GiB of weights) is the case that only two cards can serve comfortably.",
+    "model": "Qwen/Qwen2.5-72B-Instruct-AWQ",
+    "weights_on_disk_gib": 39,
+    "layout": "TP=2, --max-model-len 32768, --kv-cache-dtype fp8, --gpu-memory-utilization 0.92, --max-num-seqs 32",
+    "load_to_api_ready_s": 172,
+    "kv_cache_tokens": 494848,
+    "max_concurrency_at_32k": 15.1,
+    "ttft_short_ms": 64.9,
+    "decode_tok_s": 37.08,
+    "agg_2_tok_s": 67.31,
+    "agg_4_tok_s": 112.96,
+    "agg_16_tok_s": 275.03,
+    "per_agent_tok_s_16": 17.76,
+    "agg_32_tok_s": 359.67,
+    "per_agent_tok_s_32": 11.65,
+    "prefill_24k_ttft_s": 50.97,
+    "power_1_agent_median_w": 436.89,
+    "power_16_agents_median_w": 328.29,
+    "power_32_agents_median_w": 303.61,
+    "max_temp_c": 62.0,
+    "context_finding": "The 128K attempt was rejected by vLLM: this checkpoint's config.json declares max_position_embeddings=32768. The 128K figure quoted for Qwen2.5-72B requires YaRN rope-scaling, which is off by default. So the 32K ceiling seen on one card was the MODEL's native limit, not a VRAM limit - two cards do not unlock a longer window here without explicitly enabling YaRN.",
+    "notes": [
+      "72B at TP=2 decodes 37.1 tok/s single-stream - about half the 70.9 tok/s that 27B reaches at TP=2, which tracks the ~2.7x parameter increase against the doubled memory bandwidth.",
+      "Batch throughput tops out at 359.7 tok/s at 32 agents, still below what a SINGLE card does with 27B (608 tok/s at 16 agents). Capacity, not speed, is what the second card buys.",
+      "Power is inverted versus intuition: 1 agent draws the highest median (436.9 W) and 32 agents the lowest (303.6 W). Under heavy batch the cards spend more time blocked on the host-staged allreduce than computing, so they clock down.",
+      "Prefill of 24K tokens takes 51.0 s, consistent with the TP=2 prefill penalty measured on 27B."
+    ],
+    "verdict": "The capacity claim holds in the sense that matters: 39 GiB of weights plus a 494,848-token KV pool simply does not fit on one 64 GB card at this batch size. But it costs throughput, and it does NOT extend the context window."
+  },
   "deltas_tp2_vs_tp1": {
     "single_decode": "+23.4%",
     "agg_2": "+13.0%",
@@ -104,7 +134,8 @@
     "Measured directly: two independent TP=1 servers deliver 754 tok/s at 16 agents and 1253 tok/s at 32 agents, versus 415 tok/s for TP=2. Sharding beats tensor-parallel by 1.8x to 3.0x on the same two cards."
   ],
   "recommendation": {
-    "use_tp2_when": "The model does not fit in 64 GB, or you need a KV pool deeper than one card can hold, or you are latency-bound on a single stream (+23% decode).",
+    "use_tp2_when": "The model does not fit in 64 GB (measured: 72B AWQ, 39 GiB weights, serves at TP=2 and cannot be served on one card with a useful KV pool), or you need a KV pool deeper than one card can hold, or you are latency-bound on a single stream (+23% decode).",
+    "tp2_does_not_buy_context": "Measured: a second card does not extend the context window. The window is set by the checkpoint's max_position_embeddings, not by VRAM. Qwen2.5-72B-AWQ refused 128K at TP=2 because its config declares 32K; 128K needs YaRN rope-scaling enabled explicitly.",
     "use_two_tp1_servers_when": "You are throughput-bound and the model fits in one card. Measured 3.0x better (1253 vs 415 tok/s). Costs a load balancer and gives up the shared KV pool.",
     "never_assume": "Do not assume TP=2 scales throughput on a card without P2P/NVLink. Measure both."
   },

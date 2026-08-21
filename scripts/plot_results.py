@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = json.loads((ROOT / "results" / "lab-2026-08-21.json").read_text())
+DUAL = json.loads((ROOT / "results" / "dual-card-2026-08-21.json").read_text())
 OUT = ROOT / "figures"
 OUT.mkdir(exist_ok=True)
 
@@ -259,6 +260,18 @@ def main() -> None:
             ("Gemma4 31B", _muse_sweep(DATA["gemma4_31b_qat"])),
         ],
         "aggregate tok/s, short code prompt, max-num-seqs 16",
+    )
+    tp1, tp2, shard = DUAL["tp1"], DUAL["tp2"], DUAL["two_tp1_servers"]
+    svg_grouped(
+        OUT / "dual-card.svg",
+        "Two 170HX, same 27B: tensor-parallel vs sharding",
+        ["1 agent", "16 agents", "32 agents"],
+        [
+            ("TP=1 (one card)", [tp1["decode_tok_s"], tp1["agg_16_tok_s"], 0]),
+            ("TP=2 (both cards)", [tp2["decode_tok_s"], tp2["agg_16_tok_s"], 0]),
+            ("2x TP=1 servers", [tp1["decode_tok_s"], shard["agg_16_tok_s"], shard["agg_32_tok_s"]]),
+        ],
+        "aggregate tok/s · no P2P (GNS), so TP=2 allreduce is host-staged at 5.85 GB/s",
     )
     print("wrote", *sorted(p.name for p in OUT.glob("*.svg")))
 
