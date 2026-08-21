@@ -87,6 +87,8 @@ What actually had to change:
 
 Gemma caveat: query it through **`/v1/chat/completions`**. Raw `/v1/completions` on this instruction/thinking checkpoint degenerates into repeated tokens. Its 128K window is nominal — with bf16 KV the pool only holds ~2.7 full contexts.
 
+These two rows are **not directly comparable** to the Qwen rows: different engine, and bf16 KV roughly halves the pool against FP8. Serve commands and the accuracy gaps: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md).
+
 ## Qwen2.5 72B AWQ (it fits, it crawls)
 
 **38.8 GiB** in 20 s · **25.8 tok/s** · native **32K** only · 250 W on one stream.

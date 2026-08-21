@@ -4,15 +4,20 @@
 
 One NVIDIA CMP 170HX (GA100, 70 SMs, 64 GB HBM2e, 250 W). Driver 610.57.04. FMA unlocked. PCIe **Gen2 ×16** on this instance (width is not guaranteed on a random listing).
 
-Engine: vLLM 0.27.1, PyTorch 2.13.0+cu130, `--kv-cache-dtype fp8`, `--gpu-memory-utilization 0.95`, `--enable-chunked-prefill`, prefix caching on.
+**Two engines**, deliberately kept in separate venvs on the same box.
 
-Checkpoints (public Hugging Face):
+**Engine A — the frozen recipe** behind every Qwen number: vLLM 0.27.1, PyTorch 2.13.0+cu130, `--kv-cache-dtype fp8`, `--gpu-memory-utilization 0.95`, `--enable-chunked-prefill`, prefix caching on.
 
 - `philbert440/Qwen3.8-27B-W4A16-AWQ` (with MTP weights)
 - `Qwen/Qwen2.5-72B-Instruct-AWQ`
 - `cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit` (6/6 shards SHA-256 vs Hub LFS)
 
-Tried, **did not serve** on this frozen vLLM 0.27.1 recipe: Gemma 4 31B AWQ and Muse Glimmer 30B. Details: [`UNSUPPORTED.md`](UNSUPPORTED.md).
+**Engine B — a dev-branch vLLM** (`0.1.dev19962+gc4dc58557`, transformers 5.15.1) installed into a second venv because 0.27.1 has no Muse Glimmer class and mishandles Gemma 4's per-layer attention config. It runs with **`--kv-cache-dtype bfloat16`**, `--attention-backend TRITON_ATTN`, `VLLM_USE_FLASHINFER_SAMPLER=0`.
+
+- `dudeman2512/Muse-Glimmer-30B-INT4-W4A16` (5/5 shards SHA-256 vs Hub LFS)
+- `google/gemma-4-31B-it-qat-w4a16-ct` (1/1 shard SHA-256 vs Hub LFS)
+
+The split is the point: upgrading in place would have invalidated the published 0.27.1 numbers. **Engine A and Engine B results are not directly comparable** — FP8 vs bf16 KV alone roughly halves the pool. Failure modes for both models on Engine A, and the two cc 8.0 constraints that apply to any non-Qwen model here: [`UNSUPPORTED.md`](UNSUPPORTED.md).
 
 Scripts in `scripts/` talk to a local OpenAI-compatible server (`--base-url http://127.0.0.1:8000` by default). They do not contain hostnames, IPs, or cloud account data.
 
@@ -86,3 +91,55 @@ python3 scripts/verify_hf_dir.py --repo cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit --dir 
 python3 scripts/bench_decode.py --base-url http://127.0.0.1:8000 --model qwen36-local
 python3 scripts/bench_mtp.py --base-url http://127.0.0.1:8000 --model qwen36-local --kv-tokens 3159025
 ```
+
+## Re-run: Muse Glimmer 30B and Gemma 4 31B (Engine B)
+
+Install the dev-branch vLLM into its **own** venv so the 0.27.1 numbers above stay reproducible:
+
+```bash
+python3 -m venv /path/to/muse-venv
+VLLM_USE_PRECOMPILED=1 /path/to/muse-venv/bin/pip install \
+  "vllm @ git+https://github.com/vllm-project/vllm.git@main"
+```
+
+The three environment variables matter as much as the flags:
+
+```bash
+VENV=/path/to/muse-venv
+export CUDA_HOME="$VENV/lib/python3.12/site-packages/nvidia/cu13"
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib:$LD_LIBRARY_PATH"
+export VLLM_USE_FLASHINFER_SAMPLER=0   # FlashInfer JIT cannot build sm_80 here
+
+"$VENV/bin/vllm" serve /path/to/Muse-Glimmer-30B-INT4-W4A16 \
+  --served-model-name muse-glimmer \
+  --host 127.0.0.1 --port 8000 \
+  --tensor-parallel-size 1 \
+  --max-model-len 131072 \
+  --max-num-seqs 16 \
+  --gpu-memory-utilization 0.95 \
+  --kv-cache-dtype bfloat16 \
+  --attention-backend TRITON_ATTN \
+  --enable-auto-tool-choice --tool-call-parser muse_glimmer \
+  --reasoning-parser muse_glimmer \
+  --generation-config auto
+
+python3 scripts/bench_decode.py --base-url http://127.0.0.1:8000 --model muse-glimmer
+python3 scripts/bench_power.py  --base-url http://127.0.0.1:8000 --model muse-glimmer --agents 16
+```
+
+Gemma 4 is the same serve line with `--reasoning-parser gemma4`, `--tool-call-parser gemma4`, and no `--generation-config`. Two traps:
+
+- **`--kv-cache-dtype fp8` is not optional to change.** Triton attention rejects it on cc 8.0 (`native FP8 (fp8e4nv) requires SM89+`). Swapping to `--attention-backend FLASHINFER` to keep FP8 does **not** help — the JIT then fails on incompatible CUDA headers.
+- **Query Gemma through `/v1/chat/completions`.** Raw `/v1/completions` on this instruction/thinking checkpoint degenerates into repeated tokens. Also start it at `--max-model-len 131072`: the long-context stage of `bench_decode.py` sends ~52K tokens and returns HTTP 400 against a 32K server.
+
+## Coverage and what these numbers do not claim
+
+Deliberate gaps, so nobody reads more into the table than is there:
+
+- **Throughput, not quality.** No MMLU/GSM8K/perplexity anywhere in this repo. A 4-bit quant that got dumber would still post the same tok/s.
+- **Muse and Gemma have no accuracy check.** The buried-key needle test was run on Qwen only. Both new models got a single greedy sanity prompt (`The capital of France is` → ` Paris.`) and nothing more.
+- **Gemma's 128K window is nominal.** With bf16 KV the pool holds ~2.7 full contexts; behaviour near the window edge is untested.
+- **Engine B has no MTP/speculative sweep.** Neither checkpoint was tested with a draft head.
+- **Baseline is not a same-day rerun.** The dual-16GB numbers come from the same recipe on the owned box, quoted from earlier runs.
+- **Power is `nvidia-smi`, not a shunt**, and one rental instance is one sample of silicon and cooling.
